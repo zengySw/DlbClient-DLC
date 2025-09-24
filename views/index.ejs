@@ -1,169 +1,174 @@
 <!-- views/index.ejs -->
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NURSULTAN</title>
     <link rel="stylesheet" href="/styles/style.css">
+    <script src="/scripts/script.js" defer></script>
 </head>
+
 <body>
 
-<div class="particles"></div>
+    <div class="particles"></div>
 
-<header>
-    <nav class="container">
-        <div class="logo">NURSULTAN</div>
-        <div class="nav-center">
-            <div class="language-selector"><div class="flag"></div><span>Русский</span><span>▼</span></div>
-        </div>
-        <div style="display:flex; gap:20px; align-items:center;">
-            <ul class="nav-links">
-                <li><a href="#support">Поддержка</a></li>
-                <li><a href="#video">Видео</a></li>
-                <li><a href="#buy">Купить</a></li>
-            </ul>
-            <button class="auth-button" onclick="openModal('login')">Авторизация</button>
-        </div>
-    </nav>
-</header>
+    <header>
+        <nav class="container">
+            <div class="logo">NURSULTAN</div>
+            <div class="nav-center">
+                <div class="language-selector">
+                    <div class="flag"></div><span>Русский</span><span>▼</span>
+                </div>
+            </div>
+            <div style="display:flex; gap:20px; align-items:center;">
+                <ul class="nav-links">
+                    <li><a href="#support">Поддержка</a></li>
+                    <li><a href="#video">Видео</a></li>
+                    <li><a href="#buy">Купить</a></li>
+                </ul>
+                <button class="auth-button" data-modal="login">Авторизация</button>
+            </div>
+        </nav>
+    </header>
 
-<main>
-    <section class="hero">
-        <div class="container">
-            <div class="hero-content">
-                <div class="hero-text">
-                    <h1>О нас</h1>
-                    <p>Мы предоставляем лучший клиент для комфортной игры, чтобы вы получили наилучшие впечатления.</p>
-                    <div class="hero-buttons">
-                        <button class="btn-primary" onclick="openModal('register')">Зарегистрироваться</button>
-                        <button class="btn-secondary" onclick="scrollToSection('features')">Подробнее →</button>
+    <main>
+        <section class="hero">
+            <div class="container">
+                <div class="hero-content">
+                    <div class="hero-text">
+                        <h1>О нас</h1>
+                        <p>Мы предоставляем лучший клиент для комфортной игры, чтобы вы получили наилучшие впечатления.</p>
+                        <div class="hero-buttons">
+                            <button class="btn-primary" data-modal="register">Зарегистрироваться</button>
+                            <button class="btn-secondary" data-scroll="features">Подробнее →</button>
+                        </div>
+                    </div>
+                    <div class="hero-3d">
+                        <div class="character-3d"></div>
+                        <div class="floating-ui ui-1">Air Place<br><small>Location Based</small></div>
+                        <div class="floating-ui ui-2">Ambience<br><small>Небо Без текстур</small></div>
+                        <div class="floating-ui ui-3">Активация Windows<br><small>Перейдите в "Параметры"</small></div>
                     </div>
                 </div>
-                <div class="hero-3d">
-                    <div class="character-3d"></div>
-                    <div class="floating-ui ui-1">Air Place<br><small>Location Based</small></div>
-                    <div class="floating-ui ui-2">Ambience<br><small>Небо Без текстур</small></div>
-                    <div class="floating-ui ui-3">Активация Windows<br><small>Перейдите в "Параметры"</small></div>
-                </div>
+            </div>
+        </section>
+
+        <div id="user-dashboard" class="container hidden">
+            <div class="user-info">
+                <h2>Добро пожаловать, <span id="username"></span>!</h2>
+                <p>ID: <span id="userid"></span></p>
+                <p>Email: <span id="useremail"></span></p>
+                <button class="btn-secondary" onclick="logout()">Выйти</button>
             </div>
         </div>
-    </section>
 
-    <div id="user-dashboard" class="container hidden">
-        <div class="user-info">
-            <h2>Добро пожаловать, <span id="username"></span>!</h2>
-            <p>ID: <span id="userid"></span></p>
-            <p>Email: <span id="useremail"></span></p>
-            <button class="btn-secondary" onclick="logout()">Выйти</button>
-        </div>
-    </div>
+        <section class="features-section" id="features">
+            <div class="container">
+                <div class="features-title">
+                    <h2>Наши преимущества</h2>
+                    <p>Кратко изложены функции, которые вы получите после покупки клиента.</p>
+                </div>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon"><img src="/images/eye-icon.png" alt=""></div>
+                        <h3>Красивый внешний вид</h3>
+                        <p>Много визуальных функций, настройка под себя.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><img src="/images/settings-icon.png" alt=""></div>
+                        <h3>Настраиваемость</h3>
+                        <p>Настройка любой функции под себя и использование чужих конфигураций.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><img src="/images/optimization-icon.png" alt=""></div>
+                        <h3>Оптимизация</h3>
+                        <p>Можно запускать даже на слабых компьютерах.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><img src="/images/update-icon.png" alt=""></div>
+                        <h3>Частые обновления</h3>
+                        <p>Регулярные новые функции и улучшения.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><img src="/images/support-icon.png" alt=""></div>
+                        <h3>Лучшая поддержка</h3>
+                        <p>Помощь по любым вопросам клиента.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
 
-    <section class="features-section" id="features">
+    <footer>
         <div class="container">
-            <div class="features-title">
-                <h2>Наши преимущества</h2>
-                <p>Кратко изложены функции, которые вы получите после покупки клиента.</p>
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>NURSULTAN</h3>
+                    <div class="footer-contact">
+                        <p>Почта: nthelp@mail.ru (ПН-ПТ 10:00-18:00)</p>
+                    </div>
+                </div>
             </div>
-            <div class="features-grid">
-                <div class="feature-card">
-                    <div class="feature-icon"><img src="/images/eye-icon.png" alt=""></div>
-                    <h3>Красивый внешний вид</h3>
-                    <p>Много визуальных функций, настройка под себя.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon"><img src="/images/settings-icon.png" alt=""></div>
-                    <h3>Настраиваемость</h3>
-                    <p>Настройка любой функции под себя и использование чужих конфигураций.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon"><img src="/images/optimization-icon.png" alt=""></div>
-                    <h3>Оптимизация</h3>
-                    <p>Можно запускать даже на слабых компьютерах.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon"><img src="/images/update-icon.png" alt=""></div>
-                    <h3>Частые обновления</h3>
-                    <p>Регулярные новые функции и улучшения.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon"><img src="/images/support-icon.png" alt=""></div>
-                    <h3>Лучшая поддержка</h3>
-                    <p>Помощь по любым вопросам клиента.</p>
-                </div>
+            <div class="footer-bottom">
+                Copyright © Nursultank client 2025
             </div>
         </div>
-    </section>
-</main>
+    </footer>
 
-<footer>
-    <div class="container">
-        <div class="footer-content">
-            <div class="footer-section">
-                <h3>NURSULTAN</h3>
-                <div class="footer-contact">
-                    <p>Почта: nthelp@mail.ru (ПН-ПТ 10:00-18:00)</p>
+    <!-- Модальное окно входа -->
+    <div id="loginModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('login')">&times;</span>
+            <h2>Авторизация</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label>Логин или Email</label>
+                    <input type="text" name="loginOrEmail" placeholder="Введите логин или email" required>
                 </div>
-            </div>
+                <div class="form-group">
+                    <label>Пароль</label>
+                    <input type="password" name="password" placeholder="Введите пароль" required>
+                </div>
+                <button type="submit" class="btn-primary">Войти</button>
+                <p style="text-align: center; margin-top: 15px;">
+                    Нет аккаунта? <a href="#" onclick="closeModal('login'); openModal('register');"
+                        style="color: #00ccff;">Зарегистрироваться</a>
+                </p>
+            </form>
         </div>
-        <div class="footer-bottom">
-            Copyright © Nursultank client 2025
+    </div>
+
+    <!-- Модальное окно регистрации -->
+    <div id="registerModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('register')">&times;</span>
+            <h2>Регистрация</h2>
+            <form id="registerForm">
+                <div class="form-group">
+                    <label>Логин</label>
+                    <input type="text" name="login" placeholder="Введите логин (3-30 символов)" required>
+                    <small style="color: rgba(255,255,255,0.7);">Только буквы, цифры и подчеркивания</small>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" placeholder="Введите email" required>
+                </div>
+                <div class="form-group">
+                    <label>Пароль</label>
+                    <input type="password" name="password" placeholder="Минимум 8 символов" required>
+                    <small style="color: rgba(255,255,255,0.7);">Должен содержать буквы и цифры</small>
+                </div>
+                <button type="submit" class="btn-primary">Зарегистрироваться</button>
+                <p style="text-align: center; margin-top: 15px;">
+                    Уже есть аккаунт? <a href="#" onclick="closeModal('register'); openModal('login');"
+                        style="color: #00ccff;">Войти</a>
+                </p>
+            </form>
         </div>
     </div>
-</footer>
-
-<!-- Модальное окно входа -->
-<div id="loginModal" class="modal" style="display: none;">
-    <div class="modal-content">
-        <span class="close" onclick="closeModal('login')">&times;</span>
-        <h2>Авторизация</h2>
-        <form id="loginForm">
-            <div class="form-group">
-                <label>Логин или Email</label>
-                <input type="text" name="loginOrEmail" placeholder="Введите логин или email" required>
-            </div>
-            <div class="form-group">
-                <label>Пароль</label>
-                <input type="password" name="password" placeholder="Введите пароль" required>
-            </div>
-            <button type="submit" class="btn-primary">Войти</button>
-            <p style="text-align: center; margin-top: 15px;">
-                Нет аккаунта? <a href="#" onclick="closeModal('login'); openModal('register');" style="color: #00ccff;">Зарегистрироваться</a>
-            </p>
-        </form>
-    </div>
-</div>
-
-<!-- Модальное окно регистрации -->
-<div id="registerModal" class="modal" style="display: none;">
-    <div class="modal-content">
-        <span class="close" onclick="closeModal('register')">&times;</span>
-        <h2>Регистрация</h2>
-        <form id="registerForm">
-            <div class="form-group">
-                <label>Логин</label>
-                <input type="text" name="login" placeholder="Введите логин (3-30 символов)" required>
-                <small style="color: rgba(255,255,255,0.7);">Только буквы, цифры и подчеркивания</small>
-            </div>
-            <div class="form-group">
-                <label>Email</label>
-                <input type="email" name="email" placeholder="Введите email" required>
-            </div>
-            <div class="form-group">
-                <label>Пароль</label>
-                <input type="password" name="password" placeholder="Минимум 8 символов" required>
-                <small style="color: rgba(255,255,255,0.7);">Должен содержать буквы и цифры</small>
-            </div>
-            <button type="submit" class="btn-primary">Зарегистрироваться</button>
-            <p style="text-align: center; margin-top: 15px;">
-                Уже есть аккаунт? <a href="#" onclick="closeModal('register'); openModal('login');" style="color: #00ccff;">Войти</a>
-            </p>
-        </form>
-    </div>
-</div>
-
-<script src="/scripts/script.js" defer></script>
-
 
 </body>
+
 </html>

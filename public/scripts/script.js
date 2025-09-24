@@ -212,6 +212,8 @@ class ApiManager {
             method: 'POST'
         });
     }
+
+    
 }
 
 // ========================
@@ -389,7 +391,7 @@ class UserManager {
     }
 
     updateAuthButton() {
-        const authButton = document.querySelectorAll('.auth-button');
+        const authButton = document.querySelector('.auth-button');
         if (authButton) {
             if (this.currentUser) {
                 const buttonText = `${SecurityManager.sanitizeInput(this.currentUser.login)} ▼`;
@@ -771,6 +773,40 @@ class NursultanApp {
         this.initForms();
     }
 
+    initButtonEvents() {
+    // Кнопки открытия модалей
+    document.querySelectorAll('[data-modal]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const modalType = btn.dataset.modal;
+            this.modalManager.openModal(modalType);
+        });
+    });
+
+    // Кнопки скролла
+    document.querySelectorAll('[data-scroll]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const sectionId = btn.dataset.scroll;
+            this.scrollToSection(sectionId);
+        });
+    });
+
+    // Переключение модалей внутри форм
+    document.querySelectorAll('[data-switch-modal]').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const targetModal = link.dataset.switchModal;
+            this.modalManager.closeModal(); // закрыть все
+            this.modalManager.openModal(targetModal);
+        });
+    });
+
+    // Кнопка выхода
+    const logoutBtn = document.querySelector('.auth-button.logout');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', () => this.userManager.logout());
+    }
+}
+
     initEventListeners() {
         window.addEventListener('resize', () => {
             this.particleSystem.regenerate();
@@ -937,11 +973,19 @@ function scrollToSection(id) {
     }
 }
 
+
+
+
 // ========================
 // ИНИЦИАЛИЗАЦИЯ
 // ========================
 
 document.addEventListener('DOMContentLoaded', () => {
-    nursultanApp = new NursultanApp();
+    nursultanApp = new NursultanApp();  
+    nursultanApp.initButtonEvents(); // вот здесь
     console.log('NURSULTAN App загружен с безопасной JWT аутентификацией!');
 });
+
+
+// Глобальные функции для совместимости с HTML
+

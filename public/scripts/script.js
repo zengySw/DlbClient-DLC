@@ -1,3 +1,5 @@
+// public/scripts/script.js - ОБНОВЛЕННАЯ ВЕРСИЯ С JWT
+
 // ========================
 // СИСТЕМА БЕЗОПАСНОСТИ (клиентская часть)
 // ========================
@@ -16,19 +18,6 @@ class SecurityManager {
             .trim();
     }
 
-    static validateForSQL(input) {
-        if (typeof input !== 'string') return false;
-        
-        const sqlInjectionPatterns = [
-            /(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|SCRIPT)\b)/i,
-            /(-{2}|\/\*|\*\/)/i,
-            /(;|\||&)/g,
-            /(script|javascript|vbscript|onload|onerror|onclick)/i
-        ];
-
-        return !sqlInjectionPatterns.some(pattern => pattern.test(input));
-    }
-
     static setTextContent(element, text) {
         if (!element) return;
         const sanitized = this.sanitizeInput(text);
@@ -36,7 +25,7 @@ class SecurityManager {
     }
 
     static validatePasswordStrength(password) {
-        const minLength = 6; // Соответствует серверу
+        const minLength = 8;
         const hasUpperCase = /[A-Z]/.test(password);
         const hasLowerCase = /[a-z]/.test(password);
         const hasNumbers = /\d/.test(password);
@@ -63,40 +52,85 @@ class SecurityManager {
     }
 
     static checkRateLimit(identifier, maxAttempts = 5, timeWindow = 300000) {
-        const attempts = window.rateLimitAttempts || {};
+        const attempts = sessionStorage.getItem('rateLimitAttempts');
+        const attemptsObj = attempts ? JSON.parse(attempts) : {};
         const now = Date.now();
         
-        if (!attempts[identifier]) {
-            attempts[identifier] = { count: 1, firstAttempt: now };
-            window.rateLimitAttempts = attempts;
+        if (!attemptsObj[identifier]) {
+            attemptsObj[identifier] = { count: 1, firstAttempt: now };
+            sessionStorage.setItem('rateLimitAttempts', JSON.stringify(attemptsObj));
             return true;
         }
 
-        const timePassed = now - attempts[identifier].firstAttempt;
+        const timePassed = now - attemptsObj[identifier].firstAttempt;
         
         if (timePassed > timeWindow) {
-            attempts[identifier] = { count: 1, firstAttempt: now };
-            window.rateLimitAttempts = attempts;
+            attemptsObj[identifier] = { count: 1, firstAttempt: now };
+            sessionStorage.setItem('rateLimitAttempts', JSON.stringify(attemptsObj));
             return true;
         }
 
-        if (attempts[identifier].count >= maxAttempts) {
+        if (attemptsObj[identifier].count >= maxAttempts) {
             return false;
         }
 
-        attempts[identifier].count++;
-        window.rateLimitAttempts = attempts;
+        attemptsObj[identifier].count++;
+        sessionStorage.setItem('rateLimitAttempts', JSON.stringify(attemptsObj));
         return true;
     }
 }
 
 // ========================
-// API МЕНЕДЖЕР (работа с сервером)
+// JWT TOKEN MANAGER
+// ========================
+
+class TokenManager {
+    static getToken() {
+        return localStorage.getItem('nursultan_jwt_token');
+    }
+
+    static setToken(token) {
+        localStorage.setItem('nursultan_jwt_token', token);
+    }
+
+    static removeToken() {
+        localStorage.removeItem('nursultan_jwt_token');
+    }
+
+    static isTokenExpired(token) {
+        if (!token) return true;
+        
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            const currentTime = Date.now() / 1000;
+            return payload.exp < currentTime;
+        } catch (error) {
+            console.error('Ошибка проверки токена:', error);
+            return true;
+        }
+    }
+
+    static getTokenPayload(token) {
+        if (!token) return null;
+        
+        try {
+            return JSON.parse(atob(token.split('.')[1]));
+        } catch (error) {
+            console.error('Ошибка парсинга токена:', error);
+            return null;
+        }
+    }
+}
+
+// ========================
+// API МЕНЕДЖЕР (обновленный с JWT)
 // ========================
 
 class ApiManager {
     static async request(url, options = {}) {
         try {
+            const token = TokenManager.getToken();
+            
             const defaultOptions = {
                 headers: {
                     'Content-Type': 'application/json',
@@ -104,8 +138,21 @@ class ApiManager {
                 ...options
             };
 
+            // Добавляем JWT токен в заголовки если он есть
+            if (token && !TokenManager.isTokenExpired(token)) {
+                defaultOptions.headers['Authorization'] = `Bearer ${token}`;
+            }
+
             const response = await fetch(url, defaultOptions);
             const data = await response.json();
+
+            // Если токен недействителен - очищаем его
+            if (response.status === 401 || response.status === 403) {
+                TokenManager.removeToken();
+                if (nursultanApp && nursultanApp.userManager) {
+                    nursultanApp.userManager.handleTokenExpiry();
+                }
+            }
 
             if (!response.ok) {
                 throw new Error(data.message || 'Ошибка сервера');
@@ -117,7 +164,6 @@ class ApiManager {
         }
     }
 
-    // Регистрация на сервере
     static async register(userData) {
         return this.request('/api/register', {
             method: 'POST',
@@ -125,7 +171,6 @@ class ApiManager {
         });
     }
 
-    // Авторизация на сервере
     static async login(credentials) {
         return this.request('/api/login', {
             method: 'POST',
@@ -133,55 +178,92 @@ class ApiManager {
         });
     }
 
-    // Получение информации о пользователе
-    static async getUserInfo(userId) {
-        return this.request(`/api/user/${userId}`);
+    static async getUserInfo() {
+        return this.request('/api/user/me');
     }
 
-    // Загрузка файла
     static async uploadFile(formData) {
+        const token = TokenManager.getToken();
+        if (!token || TokenManager.isTokenExpired(token)) {
+            throw new Error('Требуется авторизация');
+        }
+
         return this.request('/api/upload', {
             method: 'POST',
             body: formData,
-            headers: {} // FormData сам установит Content-Type
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
         });
     }
 
-    // Получение файлов пользователя
-    static async getUserFiles(userId) {
-        return this.request(`/api/files/${userId}`);
+    static async getUserFiles() {
+        return this.request('/api/files');
+    }
+
+    static async deleteFile(fileId) {
+        return this.request(`/api/files/${fileId}`, {
+            method: 'DELETE'
+        });
+    }
+
+    static async verifyToken() {
+        return this.request('/api/verify-token', {
+            method: 'POST'
+        });
     }
 }
 
 // ========================
-// СИСТЕМА УПРАВЛЕНИЯ ПОЛЬЗОВАТЕЛЯМИ
+// СИСТЕМА УПРАВЛЕНИЯ ПОЛЬЗОВАТЕЛЯМИ (обновленная)
 // ========================
 
 class UserManager {
     constructor() {
-        this.currentUser = this.loadCurrentUser();
+        this.currentUser = null;
+        this.tokenCheckInterval = null;
         this.init();
     }
 
-    loadCurrentUser() {
-        const userData = localStorage.getItem('nursultan_user');
-        return userData ? JSON.parse(userData) : null;
+    async init() {
+        const token = TokenManager.getToken();
+        if (token && !TokenManager.isTokenExpired(token)) {
+            try {
+                const response = await ApiManager.verifyToken();
+                if (response.success) {
+                    this.currentUser = response.user;
+                    this.showUserDashboard();
+                    this.updateAuthButton();
+                    this.startTokenCheck();
+                }
+            } catch (error) {
+                console.error('Ошибка проверки токена:', error);
+                this.handleTokenExpiry();
+            }
+        }
     }
 
-    saveCurrentUser(user) {
-        localStorage.setItem('nursultan_user', JSON.stringify(user));
-        this.currentUser = user;
+    startTokenCheck() {
+        // Проверяем токен каждые 5 минут
+        this.tokenCheckInterval = setInterval(() => {
+            const token = TokenManager.getToken();
+            if (!token || TokenManager.isTokenExpired(token)) {
+                this.handleTokenExpiry();
+            }
+        }, 5 * 60 * 1000); // 5 минут
     }
 
-    clearCurrentUser() {
-        localStorage.removeItem('nursultan_user');
-        this.currentUser = null;
+    stopTokenCheck() {
+        if (this.tokenCheckInterval) {
+            clearInterval(this.tokenCheckInterval);
+            this.tokenCheckInterval = null;
+        }
     }
 
-    init() {
-        if (this.currentUser) {
-            this.showUserDashboard();
-            this.updateAuthButton();
+    handleTokenExpiry() {
+        this.logout();
+        if (nursultanApp && nursultanApp.notificationManager) {
+            nursultanApp.notificationManager.show('Сессия истекла. Пожалуйста, войдите снова', 'warning');
         }
     }
 
@@ -190,7 +272,6 @@ class UserManager {
         
         const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
         
-        if (!SecurityManager.validateForSQL(email)) return false;
         if (email.length > 254) return false;
         
         return emailRegex.test(email);
@@ -198,7 +279,6 @@ class UserManager {
 
     isValidLogin(login) {
         if (!login || typeof login !== 'string') return false;
-        if (!SecurityManager.validateForSQL(login)) return false;
         
         const loginRegex = /^[a-zA-Z0-9_]{3,30}$/;
         return loginRegex.test(login);
@@ -206,15 +286,9 @@ class UserManager {
 
     isValidPassword(password) {
         if (!password || typeof password !== 'string') return false;
-        return password.length >= 6; // Соответствует серверу
+        return password.length >= 8 && /[a-zA-Z]/.test(password) && /[0-9]/.test(password);
     }
 
-    getPasswordStrengthIssues(password) {
-        const validation = SecurityManager.validatePasswordStrength(password);
-        return validation.issues;
-    }
-
-    // Регистрация через сервер
     async register(userData) {
         const { login, email, password } = userData;
 
@@ -236,10 +310,9 @@ class UserManager {
         }
 
         if (!this.isValidPassword(password)) {
-            throw new Error('Пароль должен содержать минимум 6 символов');
+            throw new Error('Пароль должен содержать минимум 8 символов, включая буквы и цифры');
         }
 
-        // Отправка на сервер
         const response = await ApiManager.register({
             login: sanitizedLogin,
             email: sanitizedEmail.toLowerCase(),
@@ -249,7 +322,6 @@ class UserManager {
         return response;
     }
 
-    // Авторизация через сервер
     async login(loginOrEmail, password) {
         if (!loginOrEmail || !password) {
             throw new Error('Заполните все поля');
@@ -262,19 +334,26 @@ class UserManager {
             throw new Error('Слишком много попыток входа. Попробуйте позже.');
         }
 
-        // Отправка на сервер
         const response = await ApiManager.login({
             login: sanitizedLoginOrEmail,
             password: password
         });
 
-        // Сохраняем пользователя локально
-        this.saveCurrentUser(response.user);
-        return response.user;
+        if (response.success && response.token) {
+            // Сохраняем токен
+            TokenManager.setToken(response.token);
+            this.currentUser = response.user;
+            this.startTokenCheck();
+            return response.user;
+        } else {
+            throw new Error('Ошибка авторизации');
+        }
     }
 
     logout() {
-        this.clearCurrentUser();
+        TokenManager.removeToken();
+        this.currentUser = null;
+        this.stopTokenCheck();
         this.hideUserDashboard();
         this.updateAuthButton();
     }
@@ -298,7 +377,6 @@ class UserManager {
                 SecurityManager.setTextContent(useremailSpan, this.currentUser.email);
             }
 
-            // Добавляем загрузку файлов
             this.showFileUpload();
         }
     }
@@ -324,7 +402,6 @@ class UserManager {
         }
     }
 
-    // Отображение формы загрузки файлов
     showFileUpload() {
         const dashboard = document.getElementById('user-dashboard');
         if (!dashboard || !this.currentUser) return;
@@ -337,7 +414,10 @@ class UserManager {
                 <h3 style="color: #00ccff; margin-bottom: 15px;">Загрузить программу</h3>
                 <form class="file-upload-form" enctype="multipart/form-data">
                     <div class="form-group">
-                        <input type="file" name="program" accept=".exe,.zip,.rar" required style="margin-bottom: 15px;">
+                        <input type="file" name="program" accept=".zip,.rar,.7z,.tar,.gz" required style="margin-bottom: 15px;">
+                        <small style="color: rgba(255,255,255,0.7); display: block; margin-bottom: 10px;">
+                            Разрешенные форматы: ZIP, RAR, 7Z, TAR, GZ (максимум 10MB)
+                        </small>
                     </div>
                     <button type="submit" class="btn-primary">Загрузить</button>
                 </form>
@@ -353,7 +433,6 @@ class UserManager {
         this.loadUserFiles();
     }
 
-    // Инициализация загрузки файлов
     initFileUpload() {
         const form = document.querySelector('.file-upload-form');
         if (!form) return;
@@ -369,33 +448,60 @@ class UserManager {
                 return;
             }
 
-            formData.append('program', fileInput.files[0]);
-            formData.append('userId', this.currentUser.id);
+            const file = fileInput.files[0];
+            
+            // Проверка размера файла на клиенте
+            if (file.size > 10 * 1024 * 1024) {
+                nursultanApp.notificationManager.show('Размер файла превышает 10MB', 'error');
+                return;
+            }
+
+            // Проверка типа файла
+            const allowedExtensions = ['.zip', '.rar', '.7z', '.tar', '.gz'];
+            const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+            
+            if (!allowedExtensions.includes(fileExtension)) {
+                nursultanApp.notificationManager.show('Недопустимый тип файла', 'error');
+                return;
+            }
+
+            formData.append('program', file);
 
             try {
+                const submitButton = form.querySelector('button[type="submit"]');
+                submitButton.disabled = true;
+                submitButton.textContent = 'Загружается...';
+
                 const response = await ApiManager.uploadFile(formData);
-                nursultanApp.notificationManager.show(response.message, 'success');
-                form.reset();
-                this.loadUserFiles(); // Обновляем список файлов
+                
+                if (response.success) {
+                    nursultanApp.notificationManager.show(response.message, 'success');
+                    form.reset();
+                    this.loadUserFiles();
+                }
             } catch (error) {
                 nursultanApp.notificationManager.show(error.message, 'error');
+            } finally {
+                const submitButton = form.querySelector('button[type="submit"]');
+                submitButton.disabled = false;
+                submitButton.textContent = 'Загрузить';
             }
         });
     }
 
-    // Загрузка списка файлов пользователя
     async loadUserFiles() {
         if (!this.currentUser) return;
 
         try {
-            const response = await ApiManager.getUserFiles(this.currentUser.id);
-            this.displayFiles(response.files);
+            const response = await ApiManager.getUserFiles();
+            if (response.success) {
+                this.displayFiles(response.files);
+            }
         } catch (error) {
             console.error('Ошибка загрузки файлов:', error);
         }
     }
 
-    // Отображение файлов
     displayFiles(files) {
         const filesList = document.querySelector('.files-list');
         if (!filesList) return;
@@ -407,15 +513,40 @@ class UserManager {
 
         const filesHTML = files.map(file => {
             const uploadDate = new Date(file.upload_date).toLocaleString('ru-RU');
+            const fileSize = (file.file_size / 1024 / 1024).toFixed(2);
+            
             return `
-                <div class="file-item" style="padding: 10px; margin: 5px 0; background: rgba(0,20,40,0.3); border-radius: 8px; border: 1px solid rgba(0,150,255,0.1);">
-                    <div style="font-weight: 600; color: #00ccff;">${SecurityManager.sanitizeInput(file.original_name)}</div>
-                    <div style="font-size: 12px; color: rgba(255,255,255,0.7);">Загружен: ${uploadDate}</div>
+                <div class="file-item" style="padding: 10px; margin: 5px 0; background: rgba(0,20,40,0.3); border-radius: 8px; border: 1px solid rgba(0,150,255,0.1); display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-weight: 600; color: #00ccff;">${SecurityManager.sanitizeInput(file.original_name)}</div>
+                        <div style="font-size: 12px; color: rgba(255,255,255,0.7);">
+                            Размер: ${fileSize} MB | Загружен: ${uploadDate}
+                        </div>
+                    </div>
+                    <button class="delete-file-btn" data-file-id="${file.id}" style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                        Удалить
+                    </button>
                 </div>
             `;
         }).join('');
 
         filesList.innerHTML = filesHTML;
+
+        // Добавляем обработчики для кнопок удаления
+        filesList.querySelectorAll('.delete-file-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const fileId = e.target.getAttribute('data-file-id');
+                if (confirm('Вы уверены, что хотите удалить этот файл?')) {
+                    try {
+                        await ApiManager.deleteFile(fileId);
+                        nursultanApp.notificationManager.show('Файл удален', 'success');
+                        this.loadUserFiles();
+                    } catch (error) {
+                        nursultanApp.notificationManager.show(error.message, 'error');
+                    }
+                }
+            });
+        });
     }
 }
 
@@ -534,6 +665,13 @@ class ModalManager {
 
         window.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.activeModal) {
+                this.closeModal();
+            }
+        });
+
+        // Добавляем обработчики для кнопок закрытия
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('close')) {
                 this.closeModal();
             }
         });
@@ -741,15 +879,17 @@ class NursultanApp {
                 return;
             }
 
-            await this.userManager.register({ login, email, password });
+            const response = await this.userManager.register({ login, email, password });
             
-            this.notificationManager.show('Регистрация успешна! Теперь можете войти в систему.', 'success');
-            this.modalManager.closeModal('register');
-            form.reset();
-            
-            setTimeout(() => {
-                this.modalManager.openModal('login');
-            }, 1000);
+            if (response.success) {
+                this.notificationManager.show('Регистрация успешна! Теперь можете войти в систему.', 'success');
+                this.modalManager.closeModal('register');
+                form.reset();
+                
+                setTimeout(() => {
+                    this.modalManager.openModal('login');
+                }, 1000);
+            }
         } catch (error) {
             this.notificationManager.show(error.message, 'error');
         }
@@ -803,5 +943,5 @@ function scrollToSection(id) {
 
 document.addEventListener('DOMContentLoaded', () => {
     nursultanApp = new NursultanApp();
-    console.log('NURSULTAN App загружен и интегрирован с сервером!');
+    console.log('NURSULTAN App загружен с безопасной JWT аутентификацией!');
 });

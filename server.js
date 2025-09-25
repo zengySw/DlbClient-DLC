@@ -288,30 +288,38 @@ app.post('/api/register', strictLimiter, async (req, res) => {
 });
 
 // === API для входа ===
+// === API для входа ===
 app.post('/api/login', strictLimiter, async (req, res) => {
     try {
         let { login, password } = req.body;
         
         if (!login || !password) {
+            console.error('Login Error: Missing login or password');
             return res.status(400).json({ 
                 success: false, 
                 message: 'Введите логин/email и пароль' 
             });
         }
 
-        login = sanitizeInput(login.toLowerCase());
+        // Санитизация и приведение к нижнему регистру
+        const sanitizedLogin = sanitizeInput(login.toLowerCase());
 
         // Поиск пользователя
         const user = await new Promise((resolve, reject) => {
             db.get(`SELECT id, login, email, password, failed_login_attempts, account_locked_until 
-                    FROM users WHERE LOWER(login) = ? OR LOWER(email) = ?`, 
-                [login, login], (err, row) => {
-                    if (err) reject(err);
-                    else resolve(row);
+                    FROM users WHERE login = ? OR email = ?`, 
+                [sanitizedLogin, sanitizedLogin], (err, row) => {
+                    if (err) {
+                        console.error('Database query error:', err);
+                        reject(err);
+                    } else {
+                        resolve(row);
+                    }
                 });
         });
 
         if (!user) {
+            console.warn(`Login failed: User not found for login/email '${sanitizedLogin}'`);
             return res.status(400).json({ 
                 success: false, 
                 message: 'Неверный логин/email или пароль' 
@@ -320,6 +328,7 @@ app.post('/api/login', strictLimiter, async (req, res) => {
 
         // Проверка блокировки аккаунта
         if (user.account_locked_until && new Date() < new Date(user.account_locked_until)) {
+            console.warn(`Login attempt for locked account: ${user.login}`);
             return res.status(429).json({ 
                 success: false, 
                 message: 'Аккаунт временно заблокирован из-за множественных неудачных попыток входа' 
@@ -330,31 +339,48 @@ app.post('/api/login', strictLimiter, async (req, res) => {
         const validPassword = await bcrypt.compare(password, user.password);
         
         if (!validPassword) {
-            // Увеличиваем счетчик неудачных попыток
             const failedAttempts = (user.failed_login_attempts || 0) + 1;
             let lockUntil = null;
             
-            if (failedAttempts >= 5) {
-                lockUntil = new Date(Date.now() + 15 * 60 * 1000); // Блокировка на 15 минут
-            }
+            // Если вы хотите включить блокировку аккаунта после 5 попыток:
+            // if (failedAttempts >= 5) {
+            //     lockUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+            //     console.warn(`Account locked due to 5 failed attempts: ${user.login}`);
+            // }
 
-            await new Promise((resolve) => {
+            // Обновляем счетчик неудачных попыток
+            await new Promise((resolve, reject) => {
                 db.run(`UPDATE users SET failed_login_attempts = ?, account_locked_until = ? 
                         WHERE id = ?`,
-                    [failedAttempts, lockUntil, user.id], resolve);
+                    [failedAttempts, lockUntil, user.id], (err) => {
+                        if (err) {
+                            console.error('Database update error on failed login:', err);
+                            reject(err);
+                        } else {
+                            resolve();
+                        }
+                    });
             });
 
+            console.warn(`Login failed for user '${user.login}': Incorrect password`);
             return res.status(400).json({ 
                 success: false, 
                 message: 'Неверный логин/email или пароль' 
             });
         }
 
-        // Успешный вход - сбрасываем счетчики и обновляем время входа
-        await new Promise((resolve) => {
+        // Успешный вход - сброс счетчиков
+        await new Promise((resolve, reject) => {
             db.run(`UPDATE users SET failed_login_attempts = 0, account_locked_until = NULL, 
                     last_login = CURRENT_TIMESTAMP WHERE id = ?`,
-                [user.id], resolve);
+                [user.id], (err) => {
+                    if (err) {
+                        console.error('Database update error on successful login:', err);
+                        reject(err);
+                    } else {
+                        resolve();
+                    }
+                });
         });
 
         // Создание JWT токена
@@ -368,7 +394,7 @@ app.post('/api/login', strictLimiter, async (req, res) => {
             { expiresIn: JWT_EXPIRES_IN }
         );
 
-        console.log(`Пользователь ${user.login} (ID: ${user.id}) вошел в систему`);
+        console.log(`Пользователь ${user.login} (ID: ${user.id}) вошел в систему.`);
 
         res.json({ 
             success: true,
@@ -382,10 +408,10 @@ app.post('/api/login', strictLimiter, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Ошибка авторизации:', error);
+        console.error('Fatal Login Error:', error);
         res.status(500).json({ 
             success: false, 
-            message: 'Ошибка сервера' 
+            message: 'Внутренняя ошибка сервера' 
         });
     }
 });

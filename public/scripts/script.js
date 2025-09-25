@@ -1,385 +1,477 @@
-// public/scripts/script.js - ОБНОВЛЕННАЯ ВЕРСИЯ С JWT
+// DLB Frontend Script
+// Совместимый с EJS шаблоном скрипт
 
-// ========================
-// СИСТЕМА БЕЗОПАСНОСТИ (клиентская часть)
-// ========================
-
-class SecurityManager {
-    static sanitizeInput(input) {
-        if (typeof input !== 'string') return input;
-        
-        return input
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#x27;')
-            .replace(/\//g, '&#x2F;')
-            .replace(/&/g, '&amp;')
-            .trim();
-    }
-
-    static setTextContent(element, text) {
-        if (!element) return;
-        const sanitized = this.sanitizeInput(text);
-        element.textContent = sanitized;
-    }
-
-    static validatePasswordStrength(password) {
-        const minLength = 8;
-        const hasUpperCase = /[A-Z]/.test(password);
-        const hasLowerCase = /[a-z]/.test(password);
-        const hasNumbers = /\d/.test(password);
-
-        const issues = [];
-        
-        if (password.length < minLength) {
-            issues.push(`Минимум ${minLength} символов`);
-        }
-        if (!hasUpperCase) {
-            issues.push('Хотя бы одна заглавная буква');
-        }
-        if (!hasLowerCase) {
-            issues.push('Хотя бы одна строчная буква');
-        }
-        if (!hasNumbers) {
-            issues.push('Хотя бы одна цифра');
-        }
-
-        return {
-            isValid: issues.length === 0,
-            issues: issues
-        };
-    }
-
-    static checkRateLimit(identifier, maxAttempts = 5, timeWindow = 300000) {
-        const attempts = sessionStorage.getItem('rateLimitAttempts');
-        const attemptsObj = attempts ? JSON.parse(attempts) : {};
-        const now = Date.now();
-        
-        if (!attemptsObj[identifier]) {
-            attemptsObj[identifier] = { count: 1, firstAttempt: now };
-            sessionStorage.setItem('rateLimitAttempts', JSON.stringify(attemptsObj));
-            return true;
-        }
-
-        const timePassed = now - attemptsObj[identifier].firstAttempt;
-        
-        if (timePassed > timeWindow) {
-            attemptsObj[identifier] = { count: 1, firstAttempt: now };
-            sessionStorage.setItem('rateLimitAttempts', JSON.stringify(attemptsObj));
-            return true;
-        }
-
-        if (attemptsObj[identifier].count >= maxAttempts) {
-            return false;
-        }
-
-        attemptsObj[identifier].count++;
-        sessionStorage.setItem('rateLimitAttempts', JSON.stringify(attemptsObj));
-        return true;
-    }
-}
-
-// ========================
-// JWT TOKEN MANAGER
-// ========================
-
-class TokenManager {
-    static getToken() {
-        return localStorage.getItem('nursultan_jwt_token');
-    }
-
-    static setToken(token) {
-        localStorage.setItem('nursultan_jwt_token', token);
-    }
-
-    static removeToken() {
-        localStorage.removeItem('nursultan_jwt_token');
-    }
-
-    static isTokenExpired(token) {
-        if (!token) return true;
-        
-        try {
-            const payload = JSON.parse(atob(token.split('.')[1]));
-            const currentTime = Date.now() / 1000;
-            return payload.exp < currentTime;
-        } catch (error) {
-            console.error('Ошибка проверки токена:', error);
-            return true;
-        }
-    }
-
-    static getTokenPayload(token) {
-        if (!token) return null;
-        
-        try {
-            return JSON.parse(atob(token.split('.')[1]));
-        } catch (error) {
-            console.error('Ошибка парсинга токена:', error);
-            return null;
-        }
-    }
-}
-
-// ========================
-// API МЕНЕДЖЕР (обновленный с JWT)
-// ========================
-
-class ApiManager {
-    static async request(url, options = {}) {
-        try {
-            const token = TokenManager.getToken();
-            
-            const defaultOptions = {
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                ...options
-            };
-
-            // Добавляем JWT токен в заголовки если он есть
-            if (token && !TokenManager.isTokenExpired(token)) {
-                defaultOptions.headers['Authorization'] = `Bearer ${token}`;
-            }
-
-            const response = await fetch(url, defaultOptions);
-            const data = await response.json();
-
-            // Если токен недействителен - очищаем его
-            if (response.status === 401 || response.status === 403) {
-                TokenManager.removeToken();
-                if (nursultanApp && nursultanApp.userManager) {
-                    nursultanApp.userManager.handleTokenExpiry();
-                }
-            }
-
-            if (!response.ok) {
-                throw new Error(data.message || 'Ошибка сервера');
-            }
-
-            return data;
-        } catch (error) {
-            throw new Error(error.message || 'Ошибка сети');
-        }
-    }
-
-    static async register(userData) {
-        return this.request('/api/register', {
-            method: 'POST',
-            body: JSON.stringify(userData)
-        });
-    }
-
-    static async login(credentials) {
-        return this.request('/api/login', {
-            method: 'POST',
-            body: JSON.stringify(credentials)
-        });
-    }
-
-    static async getUserInfo() {
-        return this.request('/api/user/me');
-    }
-
-    static async uploadFile(formData) {
-        const token = TokenManager.getToken();
-        if (!token || TokenManager.isTokenExpired(token)) {
-            throw new Error('Требуется авторизация');
-        }
-
-        return this.request('/api/upload', {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-    }
-
-    static async getUserFiles() {
-        return this.request('/api/files');
-    }
-
-    static async deleteFile(fileId) {
-        return this.request(`/api/files/${fileId}`, {
-            method: 'DELETE'
-        });
-    }
-
-    static async verifyToken() {
-        return this.request('/api/verify-token', {
-            method: 'POST'
-        });
-    }
-
-    
-}
-
-// ========================
-// СИСТЕМА УПРАВЛЕНИЯ ПОЛЬЗОВАТЕЛЯМИ (обновленная)
-// ========================
-
-class UserManager {
+class DlbApp {
     constructor() {
         this.currentUser = null;
-        this.tokenCheckInterval = null;
+        this.particles = [];
         this.init();
     }
 
-    async init() {
-        const token = TokenManager.getToken();
-        if (token && !TokenManager.isTokenExpired(token)) {
+    init() {
+        this.initEventListeners();
+        this.initModals();
+        this.initParticles();
+        this.checkAuthStatus();
+    }
+
+    // ========================
+    // СИСТЕМА ЧАСТИЦ
+    // ========================
+    
+    initParticles() {
+        const particlesContainer = document.querySelector('.particles');
+        if (!particlesContainer) return;
+
+        const particleCount = window.innerWidth < 768 ? 30 : 60;
+
+        for (let i = 0; i < particleCount; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'particle';
+            
+            const size = Math.random() * 3 + 1;
+            particle.style.cssText = `
+                position: absolute;
+                width: ${size}px;
+                height: ${size}px;
+                background: rgba(0, 204, 255, ${Math.random() * 0.5 + 0.2});
+                border-radius: 50%;
+                top: ${Math.random() * 100}vh;
+                left: ${Math.random() * 100}vw;
+                pointer-events: none;
+                animation: float ${Math.random() * 6 + 4}s linear infinite;
+            `;
+            
+            particlesContainer.appendChild(particle);
+            this.particles.push(particle);
+        }
+
+        // Добавляем CSS анимацию если её нет
+        this.addParticleStyles();
+    }
+
+    addParticleStyles() {
+        const styleId = 'particle-styles';
+        if (document.getElementById(styleId)) return;
+
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+            @keyframes float {
+                0% {
+                    transform: translateY(100vh) rotate(0deg);
+                    opacity: 0;
+                }
+                10% {
+                    opacity: 1;
+                }
+                90% {
+                    opacity: 1;
+                }
+                100% {
+                    transform: translateY(-10vh) rotate(360deg);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    // ========================
+    // МОДАЛЬНЫЕ ОКНА
+    // ========================
+
+    initModals() {
+        // Кнопки открытия модальных окон
+        document.querySelectorAll('[data-modal]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const modalType = btn.getAttribute('data-modal');
+                this.openModal(modalType);
+            });
+        });
+
+        // Кнопки закрытия модальных окон
+        document.querySelectorAll('[data-close]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const modalType = btn.getAttribute('data-close');
+                this.closeModal(modalType);
+            });
+        });
+
+        // Переключение между модалями
+        document.querySelectorAll('[data-switch]').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const toModal = link.getAttribute('data-switch');
+                const fromModal = link.getAttribute('data-from');
+                this.closeModal(fromModal);
+                setTimeout(() => this.openModal(toModal), 200);
+            });
+        });
+
+        // Закрытие модалей по клику вне их
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    const modalId = modal.id.replace('Modal', '');
+                    this.closeModal(modalId);
+                }
+            });
+        });
+
+        // Закрытие по ESC
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal').forEach(modal => {
+                    if (modal.style.display === 'flex') {
+                        const modalId = modal.id.replace('Modal', '');
+                        this.closeModal(modalId);
+                    }
+                });
+            }
+        });
+    }
+
+    openModal(modalType) {
+        const modal = document.getElementById(modalType + 'Modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            // Фокус на первое поле ввода
+            const firstInput = modal.querySelector('input');
+            if (firstInput) {
+                setTimeout(() => firstInput.focus(), 100);
+            }
+        }
+    }
+
+    closeModal(modalType) {
+        const modal = document.getElementById(modalType + 'Modal');
+        if (modal) {
+            modal.style.display = 'none';
+            // Очистка формы при закрытии
+            const form = modal.querySelector('form');
+            if (form) {
+                form.reset();
+                this.clearValidationStyles(form);
+            }
+        }
+    }
+
+    clearValidationStyles(form) {
+        const inputs = form.querySelectorAll('input');
+        inputs.forEach(input => {
+            input.style.borderColor = '';
+        });
+    }
+
+    // ========================
+    // ОБРАБОТЧИКИ СОБЫТИЙ
+    // ========================
+
+    initEventListeners() {
+        // Инициализация форм
+        this.initForms();
+
+        // Кнопки скролла
+        document.querySelectorAll('[data-scroll]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const sectionId = btn.getAttribute('data-scroll');
+                this.scrollToSection(sectionId);
+            });
+        });
+
+        // Кнопка выхода
+        document.querySelectorAll('[data-action="logout"]').forEach(btn => {
+            btn.addEventListener('click', () => this.logout());
+        });
+
+        // Адаптивность частиц при изменении размера окна
+        window.addEventListener('resize', () => {
+            this.reinitParticles();
+        });
+    }
+
+    initForms() {
+        // Форма входа
+        const loginForm = document.getElementById('loginForm');
+        if (loginForm) {
+            loginForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleLogin(loginForm);
+            });
+        }
+
+        // Форма регистрации
+        const registerForm = document.getElementById('registerForm');
+        if (registerForm) {
+            registerForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleRegister(registerForm);
+            });
+        }
+
+        // Валидация в реальном времени
+        this.initRealtimeValidation();
+    }
+
+    initRealtimeValidation() {
+        // Email валидация
+        document.querySelectorAll('input[type="email"]').forEach(input => {
+            input.addEventListener('input', () => {
+                this.validateEmail(input);
+            });
+        });
+
+        // Логин валидация
+        document.querySelectorAll('input[name="login"]').forEach(input => {
+            input.addEventListener('input', () => {
+                this.validateLogin(input);
+            });
+        });
+
+        // Пароль валидация
+        document.querySelectorAll('input[type="password"]').forEach(input => {
+            input.addEventListener('input', () => {
+                this.validatePassword(input);
+            });
+        });
+    }
+
+    // ========================
+    // ВАЛИДАЦИЯ
+    // ========================
+
+    validateEmail(input) {
+        const email = input.value.trim();
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        
+        if (email === '') {
+            this.setInputState(input, 'neutral');
+        } else if (emailRegex.test(email) && email.length <= 254) {
+            this.setInputState(input, 'valid');
+        } else {
+            this.setInputState(input, 'invalid');
+        }
+    }
+
+    validateLogin(input) {
+        const login = input.value.trim();
+        const loginRegex = /^[a-zA-Z0-9_]{3,30}$/;
+        
+        if (login === '') {
+            this.setInputState(input, 'neutral');
+        } else if (loginRegex.test(login)) {
+            this.setInputState(input, 'valid');
+        } else {
+            this.setInputState(input, 'invalid');
+        }
+    }
+
+    validatePassword(input) {
+        const password = input.value;
+        const hasLength = password.length >= 8;
+        const hasLetters = /[a-zA-Z]/.test(password);
+        const hasNumbers = /\d/.test(password);
+        
+        if (password === '') {
+            this.setInputState(input, 'neutral');
+        } else if (hasLength && hasLetters && hasNumbers) {
+            this.setInputState(input, 'valid');
+        } else {
+            this.setInputState(input, 'invalid');
+        }
+    }
+
+    setInputState(input, state) {
+        const colors = {
+            neutral: 'rgba(0, 150, 255, 0.3)',
+            valid: '#28a745',
+            invalid: '#dc3545'
+        };
+        input.style.borderColor = colors[state];
+    }
+
+    // ========================
+    // АВТОРИЗАЦИЯ И РЕГИСТРАЦИЯ
+    // ========================
+
+   async handleLogin(form) {
+    const formData = new FormData(form);
+    console.log('loginOrEmail:', formData.get('loginOrEmail'));
+    console.log('password:', formData.get('password'));
+
+    const login = (formData.get('loginOrEmail') || '').trim();
+    const password = formData.get('password') || '';
+
+    // правильная проверка
+    if (!login || !password) {
+        this.showNotification('Заполните все поля', 'error');
+        return;
+    }
+
+    try {
+        const response = await this.makeApiRequest('/api/login', {
+            method: 'POST',
+            body: JSON.stringify({ login, password }) // отправляем login и password
+        });
+
+        if (response.success) {
+            this.currentUser = response.user;
+            this.saveAuthToken(response.token);
+            this.showUserDashboard();
+            this.updateAuthButton();
+            this.closeModal('login');
+            this.showNotification(`Добро пожаловать, ${response.user.login}!`, 'success');
+        }
+    } catch (error) {
+        this.showNotification(error.message, 'error');
+    }
+}
+
+
+    async handleRegister(form) {
+        const formData = new FormData(form);
+        const registerData = {
+            login: formData.get('login')?.trim(),
+            email: formData.get('email')?.trim().toLowerCase(),
+            password: formData.get('password')
+        };
+
+        // Клиентская валидация
+        if (!this.validateRegisterData(registerData)) {
+            return;
+        }
+
+        try {
+            const response = await this.makeApiRequest('/api/register', {
+                method: 'POST',
+                body: JSON.stringify(registerData)
+            });
+
+            if (response.success) {
+                this.closeModal('register');
+                this.showNotification('Регистрация успешна! Теперь можете войти в систему.', 'success');
+                setTimeout(() => this.openModal('login'), 1000);
+            }
+        } catch (error) {
+            this.showNotification(error.message, 'error');
+        }
+    }
+
+    validateRegisterData(data) {
+        if (!data.login || !data.email || !data.password) {
+            this.showNotification('Заполните все поля', 'error');
+            return false;
+        }
+
+        if (!/^[a-zA-Z0-9_]{3,30}$/.test(data.login)) {
+            this.showNotification('Логин должен содержать 3-30 символов (буквы, цифры, подчеркивания)', 'error');
+            return false;
+        }
+
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+            this.showNotification('Введите корректный email адрес', 'error');
+            return false;
+        }
+
+        if (data.password.length < 8 || !/[a-zA-Z]/.test(data.password) || !/\d/.test(data.password)) {
+            this.showNotification('Пароль должен содержать минимум 8 символов, включая буквы и цифры', 'error');
+            return false;
+        }
+
+        return true;
+    }
+
+    // ========================
+    // API ЗАПРОСЫ
+    // ========================
+
+    async makeApiRequest(url, options = {}) {
+        const token = this.getAuthToken();
+        
+        const defaultOptions = {
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            ...options
+        };
+
+        if (token) {
+            defaultOptions.headers.Authorization = `Bearer ${token}`;
+        }
+
+        const response = await fetch(url, defaultOptions);
+        const data = await response.json();
+
+        if (!response.ok) {
+            if (response.status === 401 || response.status === 403) {
+                this.handleTokenExpiry();
+            }
+            throw new Error(data.message || 'Ошибка сервера');
+        }
+
+        return data;
+    }
+
+    // ========================
+    // УПРАВЛЕНИЕ ТОКЕНАМИ
+    // ========================
+
+    saveAuthToken(token) {
+        localStorage.setItem('dlb_auth_token', token);
+    }
+
+    getAuthToken() {
+        return localStorage.getItem('dlb_auth_token');
+    }
+
+    removeAuthToken() {
+        localStorage.removeItem('dlb_auth_token');
+    }
+
+    handleTokenExpiry() {
+        this.removeAuthToken();
+        this.currentUser = null;
+        this.hideUserDashboard();
+        this.updateAuthButton();
+        this.showNotification('Сессия истекла. Пожалуйста, войдите снова', 'warning');
+    }
+
+    async checkAuthStatus() {
+        const token = this.getAuthToken();
+        if (token) {
             try {
-                const response = await ApiManager.verifyToken();
+                const response = await this.makeApiRequest('/api/verify-token', {
+                    method: 'POST'
+                });
+                
                 if (response.success) {
                     this.currentUser = response.user;
                     this.showUserDashboard();
                     this.updateAuthButton();
-                    this.startTokenCheck();
                 }
             } catch (error) {
-                console.error('Ошибка проверки токена:', error);
                 this.handleTokenExpiry();
             }
         }
     }
 
-    startTokenCheck() {
-        // Проверяем токен каждые 5 минут
-        this.tokenCheckInterval = setInterval(() => {
-            const token = TokenManager.getToken();
-            if (!token || TokenManager.isTokenExpired(token)) {
-                this.handleTokenExpiry();
-            }
-        }, 5 * 60 * 1000); // 5 минут
-    }
-
-    stopTokenCheck() {
-        if (this.tokenCheckInterval) {
-            clearInterval(this.tokenCheckInterval);
-            this.tokenCheckInterval = null;
-        }
-    }
-
-    handleTokenExpiry() {
-        this.logout();
-        if (nursultanApp && nursultanApp.notificationManager) {
-            nursultanApp.notificationManager.show('Сессия истекла. Пожалуйста, войдите снова', 'warning');
-        }
-    }
-
-    isValidEmail(email) {
-        if (!email || typeof email !== 'string') return false;
-        
-        const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-        
-        if (email.length > 254) return false;
-        
-        return emailRegex.test(email);
-    }
-
-    isValidLogin(login) {
-        if (!login || typeof login !== 'string') return false;
-        
-        const loginRegex = /^[a-zA-Z0-9_]{3,30}$/;
-        return loginRegex.test(login);
-    }
-
-    isValidPassword(password) {
-        if (!password || typeof password !== 'string') return false;
-        return password.length >= 8 && /[a-zA-Z]/.test(password) && /[0-9]/.test(password);
-    }
-
-    async register(userData) {
-        const { login, email, password } = userData;
-
-        const sanitizedLogin = SecurityManager.sanitizeInput(login);
-        const sanitizedEmail = SecurityManager.sanitizeInput(email);
-
-        // Проверка rate limiting
-        if (!SecurityManager.checkRateLimit('register_' + sanitizedEmail, 3, 600000)) {
-            throw new Error('Слишком много попыток регистрации. Попробуйте позже.');
-        }
-
-        // Клиентская валидация
-        if (!this.isValidLogin(sanitizedLogin)) {
-            throw new Error('Логин должен содержать 3-30 символов (буквы, цифры, подчеркивания)');
-        }
-
-        if (!this.isValidEmail(sanitizedEmail)) {
-            throw new Error('Введите корректный email адрес');
-        }
-
-        if (!this.isValidPassword(password)) {
-            throw new Error('Пароль должен содержать минимум 8 символов, включая буквы и цифры');
-        }
-
-        const response = await ApiManager.register({
-            login: sanitizedLogin,
-            email: sanitizedEmail.toLowerCase(),
-            password: password
-        });
-
-        return response;
-    }
-
-    async login(loginOrEmail, password) {
-        if (!loginOrEmail || !password) {
-            throw new Error('Заполните все поля');
-        }
-
-        const sanitizedLoginOrEmail = SecurityManager.sanitizeInput(loginOrEmail);
-
-        // Проверка rate limiting
-        if (!SecurityManager.checkRateLimit('login_' + sanitizedLoginOrEmail, 5, 900000)) {
-            throw new Error('Слишком много попыток входа. Попробуйте позже.');
-        }
-
-        const response = await ApiManager.login({
-            login: sanitizedLoginOrEmail,
-            password: password
-        });
-
-        if (response.success && response.token) {
-            // Сохраняем токен
-            TokenManager.setToken(response.token);
-            this.currentUser = response.user;
-            this.startTokenCheck();
-            return response.user;
-        } else {
-            throw new Error('Ошибка авторизации');
-        }
-    }
-
-    logout() {
-        TokenManager.removeToken();
-        this.currentUser = null;
-        this.stopTokenCheck();
-        this.hideUserDashboard();
-        this.updateAuthButton();
-    }
+    // ========================
+    // ПОЛЬЗОВАТЕЛЬСКИЙ ИНТЕРФЕЙС
+    // ========================
 
     showUserDashboard() {
         const dashboard = document.getElementById('user-dashboard');
-        const usernameSpan = document.getElementById('username');
-        const useridSpan = document.getElementById('userid');
-        const useremailSpan = document.getElementById('useremail');
-
         if (dashboard && this.currentUser) {
             dashboard.classList.remove('hidden');
             
-            if (usernameSpan) {
-                SecurityManager.setTextContent(usernameSpan, this.currentUser.login);
-            }
-            if (useridSpan) {
-                SecurityManager.setTextContent(useridSpan, this.currentUser.id.toString());
-            }
-            if (useremailSpan) {
-                SecurityManager.setTextContent(useremailSpan, this.currentUser.email);
-            }
+            const usernameEl = document.getElementById('username');
+            const useridEl = document.getElementById('userid');
+            const useremailEl = document.getElementById('useremail');
 
-            this.showFileUpload();
+            if (usernameEl) usernameEl.textContent = this.currentUser.login;
+            if (useridEl) useridEl.textContent = this.currentUser.id;
+            if (useremailEl) useremailEl.textContent = this.currentUser.email;
         }
     }
 
@@ -394,176 +486,32 @@ class UserManager {
         const authButton = document.querySelector('.auth-button');
         if (authButton) {
             if (this.currentUser) {
-                const buttonText = `${SecurityManager.sanitizeInput(this.currentUser.login)} ▼`;
-                SecurityManager.setTextContent(authButton, buttonText);
+                authButton.textContent = `${this.currentUser.login} ▼`;
                 authButton.onclick = () => this.logout();
             } else {
                 authButton.textContent = 'Авторизация';
-                authButton.onclick = () => openModal('login');
+                authButton.onclick = () => this.openModal('login');
             }
         }
     }
 
-    showFileUpload() {
-        const dashboard = document.getElementById('user-dashboard');
-        if (!dashboard || !this.currentUser) return;
-
-        // Проверяем, есть ли уже форма
-        if (dashboard.querySelector('.file-upload-form')) return;
-
-        const fileUploadHTML = `
-            <div class="file-upload-section" style="margin-top: 20px; padding: 20px; background: rgba(0,30,60,0.2); border-radius: 12px; border: 1px solid rgba(0,150,255,0.2);">
-                <h3 style="color: #00ccff; margin-bottom: 15px;">Загрузить программу</h3>
-                <form class="file-upload-form" enctype="multipart/form-data">
-                    <div class="form-group">
-                        <input type="file" name="program" accept=".zip,.rar,.7z,.tar,.gz" required style="margin-bottom: 15px;">
-                        <small style="color: rgba(255,255,255,0.7); display: block; margin-bottom: 10px;">
-                            Разрешенные форматы: ZIP, RAR, 7Z, TAR, GZ (максимум 10MB)
-                        </small>
-                    </div>
-                    <button type="submit" class="btn-primary">Загрузить</button>
-                </form>
-                <div class="user-files" style="margin-top: 20px;">
-                    <h4 style="color: #00ccff;">Ваши файлы:</h4>
-                    <div class="files-list"></div>
-                </div>
-            </div>
-        `;
-
-        dashboard.insertAdjacentHTML('beforeend', fileUploadHTML);
-        this.initFileUpload();
-        this.loadUserFiles();
+    logout() {
+        this.removeAuthToken();
+        this.currentUser = null;
+        this.hideUserDashboard();
+        this.updateAuthButton();
+        this.showNotification('Вы вышли из системы', 'info');
     }
 
-    initFileUpload() {
-        const form = document.querySelector('.file-upload-form');
-        if (!form) return;
+    // ========================
+    // УВЕДОМЛЕНИЯ
+    // ========================
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const formData = new FormData();
-            const fileInput = form.querySelector('input[type="file"]');
-            
-            if (!fileInput.files[0]) {
-                nursultanApp.notificationManager.show('Выберите файл', 'error');
-                return;
-            }
-
-            const file = fileInput.files[0];
-            
-            // Проверка размера файла на клиенте
-            if (file.size > 10 * 1024 * 1024) {
-                nursultanApp.notificationManager.show('Размер файла превышает 10MB', 'error');
-                return;
-            }
-
-            // Проверка типа файла
-            const allowedExtensions = ['.zip', '.rar', '.7z', '.tar', '.gz'];
-            const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
-            
-            if (!allowedExtensions.includes(fileExtension)) {
-                nursultanApp.notificationManager.show('Недопустимый тип файла', 'error');
-                return;
-            }
-
-            formData.append('program', file);
-
-            try {
-                const submitButton = form.querySelector('button[type="submit"]');
-                submitButton.disabled = true;
-                submitButton.textContent = 'Загружается...';
-
-                const response = await ApiManager.uploadFile(formData);
-                
-                if (response.success) {
-                    nursultanApp.notificationManager.show(response.message, 'success');
-                    form.reset();
-                    this.loadUserFiles();
-                }
-            } catch (error) {
-                nursultanApp.notificationManager.show(error.message, 'error');
-            } finally {
-                const submitButton = form.querySelector('button[type="submit"]');
-                submitButton.disabled = false;
-                submitButton.textContent = 'Загрузить';
-            }
-        });
-    }
-
-    async loadUserFiles() {
-        if (!this.currentUser) return;
-
-        try {
-            const response = await ApiManager.getUserFiles();
-            if (response.success) {
-                this.displayFiles(response.files);
-            }
-        } catch (error) {
-            console.error('Ошибка загрузки файлов:', error);
-        }
-    }
-
-    displayFiles(files) {
-        const filesList = document.querySelector('.files-list');
-        if (!filesList) return;
-
-        if (files.length === 0) {
-            filesList.innerHTML = '<p style="color: rgba(255,255,255,0.7);">Файлы не найдены</p>';
-            return;
-        }
-
-        const filesHTML = files.map(file => {
-            const uploadDate = new Date(file.upload_date).toLocaleString('ru-RU');
-            const fileSize = (file.file_size / 1024 / 1024).toFixed(2);
-            
-            return `
-                <div class="file-item" style="padding: 10px; margin: 5px 0; background: rgba(0,20,40,0.3); border-radius: 8px; border: 1px solid rgba(0,150,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <div style="font-weight: 600; color: #00ccff;">${SecurityManager.sanitizeInput(file.original_name)}</div>
-                        <div style="font-size: 12px; color: rgba(255,255,255,0.7);">
-                            Размер: ${fileSize} MB | Загружен: ${uploadDate}
-                        </div>
-                    </div>
-                    <button class="delete-file-btn" data-file-id="${file.id}" style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;">
-                        Удалить
-                    </button>
-                </div>
-            `;
-        }).join('');
-
-        filesList.innerHTML = filesHTML;
-
-        // Добавляем обработчики для кнопок удаления
-        filesList.querySelectorAll('.delete-file-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const fileId = e.target.getAttribute('data-file-id');
-                if (confirm('Вы уверены, что хотите удалить этот файл?')) {
-                    try {
-                        await ApiManager.deleteFile(fileId);
-                        nursultanApp.notificationManager.show('Файл удален', 'success');
-                        this.loadUserFiles();
-                    } catch (error) {
-                        nursultanApp.notificationManager.show(error.message, 'error');
-                    }
-                }
-            });
-        });
-    }
-}
-
-// ========================
-// СИСТЕМА УВЕДОМЛЕНИЙ
-// ========================
-
-class NotificationManager {
-    constructor() {
-        this.createNotificationContainer();
-    }
-
-    createNotificationContainer() {
-        if (!document.getElementById('notification-container')) {
-            const container = document.createElement('div');
+    showNotification(message, type = 'info', duration = 5000) {
+        // Создаем контейнер для уведомлений если его нет
+        let container = document.getElementById('notification-container');
+        if (!container) {
+            container = document.createElement('div');
             container.id = 'notification-container';
             container.style.cssText = `
                 position: fixed;
@@ -574,21 +522,17 @@ class NotificationManager {
             `;
             document.body.appendChild(container);
         }
-    }
 
-    show(message, type = 'info', duration = 5000) {
-        const sanitizedMessage = SecurityManager.sanitizeInput(message);
-        
         const notification = document.createElement('div');
         notification.className = `notification notification-${type}`;
         notification.style.cssText = `
-            background: ${this.getBackgroundColor(type)};
+            background: ${this.getNotificationColor(type)};
             color: white;
             padding: 15px 20px;
             border-radius: 8px;
             margin-bottom: 10px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            border-left: 4px solid ${this.getBorderColor(type)};
+            border-left: 4px solid ${this.getNotificationBorderColor(type)};
             opacity: 0;
             transform: translateX(100%);
             transition: all 0.3s ease;
@@ -598,26 +542,27 @@ class NotificationManager {
             word-wrap: break-word;
         `;
         
-        SecurityManager.setTextContent(notification, sanitizedMessage);
-
-        const container = document.getElementById('notification-container');
+        notification.textContent = message;
         container.appendChild(notification);
 
+        // Анимация появления
         setTimeout(() => {
             notification.style.opacity = '1';
             notification.style.transform = 'translateX(0)';
         }, 10);
 
+        // Автоматическое исчезновение
         setTimeout(() => {
-            this.hide(notification);
+            this.hideNotification(notification);
         }, duration);
 
+        // Исчезновение по клику
         notification.addEventListener('click', () => {
-            this.hide(notification);
+            this.hideNotification(notification);
         });
     }
 
-    hide(notification) {
+    hideNotification(notification) {
         notification.style.opacity = '0';
         notification.style.transform = 'translateX(100%)';
         setTimeout(() => {
@@ -627,7 +572,7 @@ class NotificationManager {
         }, 300);
     }
 
-    getBackgroundColor(type) {
+    getNotificationColor(type) {
         const colors = {
             success: 'linear-gradient(135deg, #28a745, #20c997)',
             error: 'linear-gradient(135deg, #dc3545, #e74c3c)',
@@ -637,7 +582,7 @@ class NotificationManager {
         return colors[type] || colors.info;
     }
 
-    getBorderColor(type) {
+    getNotificationBorderColor(type) {
         const colors = {
             success: '#20c997',
             error: '#e74c3c',
@@ -646,290 +591,10 @@ class NotificationManager {
         };
         return colors[type] || colors.info;
     }
-}
 
-// ========================
-// СИСТЕМА МОДАЛЬНЫХ ОКОН
-// ========================
-
-class ModalManager {
-    constructor() {
-        this.activeModal = null;
-        this.initEventListeners();
-    }
-
-    initEventListeners() {
-        window.addEventListener('click', (event) => {
-            if (event.target.classList.contains('modal')) {
-                this.closeModal();
-            }
-        });
-
-        window.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && this.activeModal) {
-                this.closeModal();
-            }
-        });
-
-        // Добавляем обработчики для кнопок закрытия
-        document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('close')) {
-                this.closeModal();
-            }
-        });
-    }
-
-    openModal(type) {
-        const modal = document.getElementById(type + 'Modal');
-        if (modal) {
-            modal.style.display = 'flex';
-            this.activeModal = type;
-            const firstInput = modal.querySelector('input');
-            if (firstInput) {
-                setTimeout(() => firstInput.focus(), 100);
-            }
-        }
-    }
-
-    closeModal(type = null) {
-        if (type) {
-            const modal = document.getElementById(type + 'Modal');
-            if (modal) {
-                modal.style.display = 'none';
-            }
-        } else if (this.activeModal) {
-            const modal = document.getElementById(this.activeModal + 'Modal');
-            if (modal) {
-                modal.style.display = 'none';
-            }
-        }
-        this.activeModal = null;
-    }
-}
-
-// ========================
-// СИСТЕМА ЧАСТИЦ
-// ========================
-
-class ParticleSystem {
-    constructor() {
-        this.container = document.querySelector('.particles');
-        this.particles = [];
-        this.createParticles();
-    }
-
-    createParticles() {
-        if (!this.container) return;
-
-        const particleCount = window.innerWidth < 768 ? 50 : 100;
-
-        for (let i = 0; i < particleCount; i++) {
-            const particle = document.createElement('div');
-            particle.classList.add('particle');
-            
-            const size = Math.random() * 2 + 1;
-            particle.style.cssText = `
-                top: ${Math.random() * 100}%;
-                left: ${Math.random() * 100}%;
-                width: ${size}px;
-                height: ${size}px;
-                animation-duration: ${Math.random() * 5 + 3}s;
-                animation-delay: ${Math.random() * 2}s;
-                opacity: ${Math.random() * 0.8 + 0.2};
-            `;
-            
-            this.container.appendChild(particle);
-            this.particles.push(particle);
-        }
-    }
-
-    destroy() {
-        this.particles.forEach(particle => {
-            if (particle.parentNode) {
-                particle.parentNode.removeChild(particle);
-            }
-        });
-        this.particles = [];
-    }
-
-    regenerate() {
-        this.destroy();
-        this.createParticles();
-    }
-}
-
-// ========================
-// ГЛАВНОЕ ПРИЛОЖЕНИЕ
-// ========================
-
-class NursultanApp {
-    constructor() {
-        this.userManager = new UserManager();
-        this.modalManager = new ModalManager();
-        this.notificationManager = new NotificationManager();
-        this.particleSystem = new ParticleSystem();
-        
-        this.initEventListeners();
-        this.initForms();
-    }
-
-    initButtonEvents() {
-    // Кнопки открытия модалей
-    document.querySelectorAll('[data-modal]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const modalType = btn.dataset.modal;
-            this.modalManager.openModal(modalType);
-        });
-    });
-
-    // Кнопки скролла
-    document.querySelectorAll('[data-scroll]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const sectionId = btn.dataset.scroll;
-            this.scrollToSection(sectionId);
-        });
-    });
-
-    // Переключение модалей внутри форм
-    document.querySelectorAll('[data-switch-modal]').forEach(link => {
-        link.addEventListener('click', (e) => {
-            e.preventDefault();
-            const targetModal = link.dataset.switchModal;
-            this.modalManager.closeModal(); // закрыть все
-            this.modalManager.openModal(targetModal);
-        });
-    });
-
-    // Кнопка выхода
-    const logoutBtn = document.querySelector('.auth-button.logout');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', () => this.userManager.logout());
-    }
-}
-
-    initEventListeners() {
-        window.addEventListener('resize', () => {
-            this.particleSystem.regenerate();
-        });
-
-        document.addEventListener('click', (e) => {
-            if (e.target.matches('[onclick*="scrollToSection"]')) {
-                e.preventDefault();
-                const sectionId = e.target.getAttribute('onclick').match(/'([^']+)'/)[1];
-                this.scrollToSection(sectionId);
-            }
-        });
-    }
-
-    initForms() {
-        const loginForm = document.getElementById('loginForm');
-        if (loginForm) {
-            loginForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                this.handleLogin(e.target);
-            });
-        }
-
-        const registerForm = document.getElementById('registerForm');
-        if (registerForm) {
-            registerForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                this.handleRegister(e.target);
-            });
-        }
-
-        this.addRealTimeValidation();
-    }
-
-    addRealTimeValidation() {
-        const emailInputs = document.querySelectorAll('input[type="email"]');
-        emailInputs.forEach(input => {
-            input.addEventListener('input', () => {
-                const isValid = this.userManager.isValidEmail(input.value);
-                this.toggleInputValidation(input, isValid);
-            });
-        });
-
-        const loginInputs = document.querySelectorAll('input[name="login"]');
-        loginInputs.forEach(input => {
-            input.addEventListener('input', () => {
-                const isValid = this.userManager.isValidLogin(input.value);
-                this.toggleInputValidation(input, isValid);
-            });
-        });
-
-        const passwordInputs = document.querySelectorAll('input[type="password"]');
-        passwordInputs.forEach(input => {
-            input.addEventListener('input', () => {
-                const isValid = this.userManager.isValidPassword(input.value);
-                this.toggleInputValidation(input, isValid);
-            });
-        });
-    }
-
-    toggleInputValidation(input, isValid) {
-        if (input.value.length === 0) {
-            input.style.borderColor = 'rgba(0, 150, 255, 0.3)';
-            return;
-        }
-
-        if (isValid) {
-            input.style.borderColor = '#28a745';
-        } else {
-            input.style.borderColor = '#dc3545';
-        }
-    }
-
-    async handleLogin(form) {
-        try {
-            const formData = new FormData(form);
-            const loginOrEmail = formData.get('loginOrEmail');
-            const password = formData.get('password');
-
-            if (!loginOrEmail || !password) {
-                this.notificationManager.show('Заполните все поля', 'error');
-                return;
-            }
-
-            const user = await this.userManager.login(loginOrEmail, password);
-            
-            this.notificationManager.show(`Добро пожаловать, ${user.login}!`, 'success');
-            this.modalManager.closeModal('login');
-            this.userManager.showUserDashboard();
-            this.userManager.updateAuthButton();
-            form.reset();
-        } catch (error) {
-            this.notificationManager.show(error.message, 'error');
-        }
-    }
-
-    async handleRegister(form) {
-        try {
-            const formData = new FormData(form);
-            const login = formData.get('login');
-            const email = formData.get('email');
-            const password = formData.get('password');
-
-            if (!login || !email || !password) {
-                this.notificationManager.show('Заполните все поля', 'error');
-                return;
-            }
-
-            const response = await this.userManager.register({ login, email, password });
-            
-            if (response.success) {
-                this.notificationManager.show('Регистрация успешна! Теперь можете войти в систему.', 'success');
-                this.modalManager.closeModal('register');
-                form.reset();
-                
-                setTimeout(() => {
-                    this.modalManager.openModal('login');
-                }, 1000);
-            }
-        } catch (error) {
-            this.notificationManager.show(error.message, 'error');
-        }
-    }
+    // ========================
+    // УТИЛИТЫ
+    // ========================
 
     scrollToSection(sectionId) {
         const element = document.getElementById(sectionId);
@@ -940,52 +605,61 @@ class NursultanApp {
             });
         }
     }
+
+    reinitParticles() {
+        // Удаляем старые частицы
+        this.particles.forEach(particle => {
+            if (particle.parentNode) {
+                particle.parentNode.removeChild(particle);
+            }
+        });
+        this.particles = [];
+
+        // Создаем новые
+        setTimeout(() => this.initParticles(), 100);
+    }
+
+    // ========================
+    // БЕЗОПАСНОСТЬ
+    // ========================
+
+    sanitizeInput(input) {
+        if (typeof input !== 'string') return input;
+        
+        return input
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;')
+            .replace(/\//g, '&#x2F;')
+            .trim();
+    }
 }
 
 // ========================
 // ГЛОБАЛЬНЫЕ ФУНКЦИИ
 // ========================
 
-let nursultanApp;
+let app;
 
-function openModal(type) {
-    if (nursultanApp) {
-        nursultanApp.modalManager.openModal(type);
-    }
-}
+// Функции для совместимости с HTML
+window.openModal = function(type) {
+    if (app) app.openModal(type);
+};
 
-function closeModal(type) {
-    if (nursultanApp) {
-        nursultanApp.modalManager.closeModal(type);
-    }
-}
+window.closeModal = function(type) {
+    if (app) app.closeModal(type);
+};
 
-function logout() {
-    if (nursultanApp) {
-        nursultanApp.userManager.logout();
-        nursultanApp.notificationManager.show('Вы вышли из системы', 'info');
-    }
-}
-
-function scrollToSection(id) {
-    if (nursultanApp) {
-        nursultanApp.scrollToSection(id);
-    }
-}
-
-
-
+window.scrollToSection = function(id) {
+    if (app) app.scrollToSection(id);
+};
 
 // ========================
 // ИНИЦИАЛИЗАЦИЯ
 // ========================
 
 document.addEventListener('DOMContentLoaded', () => {
-    nursultanApp = new NursultanApp();  
-    nursultanApp.initButtonEvents(); // вот здесь
-    console.log('NURSULTAN App загружен с безопасной JWT аутентификацией!');
+    app = new DlbApp();
+    console.log('DLB App успешно загружен!');
 });
-
-
-// Глобальные функции для совместимости с HTML
-

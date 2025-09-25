@@ -5,7 +5,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NURSULTAN</title>
+    <title>Dlb</title>
     <link rel="stylesheet" href="/styles/style.css">
     <script src="/scripts/script.js" defer></script>
 </head>
@@ -16,12 +16,8 @@
 
     <header>
         <nav class="container">
-            <div class="logo">NURSULTAN</div>
-            <div class="nav-center">
-                <div class="language-selector">
-                    <div class="flag"></div><span>Русский</span><span>▼</span>
-                </div>
-            </div>
+            <div class="logo">Dlb Client</div>
+    
             <div style="display:flex; gap:20px; align-items:center;">
                 <ul class="nav-links">
                     <li><a href="#support">Поддержка</a></li>
@@ -60,7 +56,7 @@
                 <h2>Добро пожаловать, <span id="username"></span>!</h2>
                 <p>ID: <span id="userid"></span></p>
                 <p>Email: <span id="useremail"></span></p>
-                <button class="btn-secondary" onclick="logout()">Выйти</button>
+                <button class="btn-secondary" data-action="logout">Выйти</button>
             </div>
         </div>
 
@@ -105,14 +101,14 @@
         <div class="container">
             <div class="footer-content">
                 <div class="footer-section">
-                    <h3>NURSULTAN</h3>
+                    <h3>Dlb Client</h3>
                     <div class="footer-contact">
-                        <p>Почта: nthelp@mail.ru (ПН-ПТ 10:00-18:00)</p>
+                        <p>TG: nthelp@mail.ru (ПН-ПТ 10:00-18:00)</p>    
                     </div>
                 </div>
             </div>
             <div class="footer-bottom">
-                Copyright © Nursultank client 2025
+                Copyright © Dlb Client 2025
             </div>
         </div>
     </footer>
@@ -120,7 +116,7 @@
     <!-- Модальное окно входа -->
     <div id="loginModal" class="modal" style="display: none;">
         <div class="modal-content">
-            <span class="close" onclick="closeModal('login')">&times;</span>
+            <span class="close" data-close="login">&times;</span>
             <h2>Авторизация</h2>
             <form id="loginForm">
                 <div class="form-group">
@@ -133,8 +129,7 @@
                 </div>
                 <button type="submit" class="btn-primary">Войти</button>
                 <p style="text-align: center; margin-top: 15px;">
-                    Нет аккаунта? <a href="#" onclick="closeModal('login'); openModal('register');"
-                        style="color: #00ccff;">Зарегистрироваться</a>
+                    Нет аккаунта? <a href="#" data-switch="register" data-from="login" style="color: #00ccff;">Зарегистрироваться</a>
                 </p>
             </form>
         </div>
@@ -143,7 +138,7 @@
     <!-- Модальное окно регистрации -->
     <div id="registerModal" class="modal" style="display: none;">
         <div class="modal-content">
-            <span class="close" onclick="closeModal('register')">&times;</span>
+            <span class="close" data-close="register">&times;</span>
             <h2>Регистрация</h2>
             <form id="registerForm">
                 <div class="form-group">
@@ -162,13 +157,11 @@
                 </div>
                 <button type="submit" class="btn-primary">Зарегистрироваться</button>
                 <p style="text-align: center; margin-top: 15px;">
-                    Уже есть аккаунт? <a href="#" onclick="closeModal('register'); openModal('login');"
-                        style="color: #00ccff;">Войти</a>
+                    Уже есть аккаунт? <a href="#" data-switch="login" data-from="register" style="color: #00ccff;">Войти</a>
                 </p>
             </form>
         </div>
     </div>
 
 </body>
-
 </html>
